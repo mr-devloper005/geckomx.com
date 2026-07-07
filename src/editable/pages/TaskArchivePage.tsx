@@ -5,6 +5,7 @@ import { CATEGORY_OPTIONS, normalizeCategory } from '@/lib/categories'
 import { fetchPaginatedTaskPosts, buildPostUrl } from '@/lib/task-data'
 import { getTaskConfig, type TaskKey } from '@/lib/site-config'
 import type { SiteFeedPagination, SitePost } from '@/lib/site-connector'
+import { Ads } from '@/lib/ads'
 import { taskPageMetadata } from '@/config/site.content'
 import { taskPageVoices } from '@/editable/content/task-pages.content'
 import { EditableSiteShell } from '@/editable/shell/EditableSiteShell'
@@ -32,8 +33,7 @@ const getImages = (post: SitePost) => {
   return [...media, ...images, ...(isUrl(image) ? [image] : []), ...(isUrl(logo) ? [logo] : [])].filter(Boolean).slice(0, 8)
 }
 
-const placeholder = '/placeholder.svg?height=900&width=1200'
-const getImage = (post: SitePost) => getImages(post)[0] || placeholder
+const getImage = (post: SitePost) => getImages(post)[0] || ''
 const getCategory = (post: SitePost, fallback: string) => asText(getContent(post).category) || post.tags?.[0] || fallback
 const stripHtml = (value: string) => value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 const getSummary = (post: SitePost) => stripHtml(post.summary || asText(getContent(post).description) || asText(getContent(post).excerpt) || asText(getContent(post).body))
@@ -55,8 +55,26 @@ function pageHref(basePath: string, category: string, page: number) {
   return query ? `${basePath}?${query}` : basePath
 }
 
+const archiveAdSlots: Record<TaskKey, 'header' | 'sidebar' | 'in-feed' | 'article-bottom' | 'footer'> = {
+  article: 'header',
+  listing: 'sidebar',
+  classified: 'in-feed',
+  image: 'article-bottom',
+  sbm: 'footer',
+  pdf: 'header',
+  profile: 'in-feed',
+}
+
+function AdBlock({ slot, eager = false }: { slot: 'header' | 'sidebar' | 'in-feed' | 'article-bottom' | 'footer'; eager?: boolean }) {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <Ads slot={slot} showLabel eager={eager} className="mx-auto w-full" />
+    </div>
+  )
+}
+
 const taskGrid: Record<TaskKey, string> = {
-  article: 'grid gap-7 md:grid-cols-2 xl:grid-cols-3',
+  article: 'grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
   listing: 'grid gap-5 xl:grid-cols-2',
   classified: 'grid gap-5 sm:grid-cols-2 xl:grid-cols-3',
   image: 'columns-1 gap-5 [column-fill:_balance] sm:columns-2 xl:columns-3',
@@ -92,6 +110,7 @@ export function TaskArchiveView({ task, posts, pagination, category, basePath }:
   const page = pagination.page || 1
   const label = taskConfig?.label || task
   const categoryLabel = category === 'all' ? 'All categories' : CATEGORY_OPTIONS.find((item) => item.slug === category)?.name || category
+  const adSlot = archiveAdSlots[task]
 
   return (
     <EditableSiteShell>
@@ -138,6 +157,7 @@ export function TaskArchiveView({ task, posts, pagination, category, basePath }:
             </div>
           </div>
         </header>
+        <AdBlock slot={adSlot} eager />
 
         <section className="mx-auto max-w-[var(--editable-container)] px-6 py-16 sm:py-20 lg:px-8">
           {posts.length ? (
@@ -165,6 +185,11 @@ export function TaskArchiveView({ task, posts, pagination, category, basePath }:
   )
 }
 
+function ArchiveMedia({ image, title, className = '' }: { image: string; title?: string; className?: string }) {
+  if (!image) return <div className={`flex items-center justify-center bg-[linear-gradient(135deg,#dfeaf3,#fff4e3)] ${className}`}><FileText className="h-8 w-8 text-[var(--tk-accent)]" /></div>
+  return <img src={image} alt={title || ''} className={`object-cover ${className}`} loading="lazy" />
+}
+
 function ArchivePostCard({ post, task, basePath, index }: { post: SitePost; task: TaskKey; basePath: string; index: number }) {
   const href = `${basePath}/${post.slug}` || buildPostUrl(task, post.slug)
   if (task === 'listing') return <ListingArchiveCard post={post} href={href} />
@@ -172,7 +197,7 @@ function ArchivePostCard({ post, task, basePath, index }: { post: SitePost; task
   if (task === 'image') return <ImageArchiveCard post={post} href={href} index={index} />
   if (task === 'sbm') return <BookmarkArchiveCard post={post} href={href} index={index} />
   if (task === 'pdf') return <PdfArchiveCard post={post} href={href} />
-  if (task === 'profile') return <ProfileArchiveCard post={post} href={href} />
+  if (task === 'profile' || task === 'article') return <ProfileArchiveCard post={post} href={href} />
   return <ArticleArchiveCard post={post} href={href} index={index} />
 }
 
@@ -225,7 +250,7 @@ function ArticleArchiveCard({ post, href, index }: { post: SitePost; href: strin
   return (
     <Link href={href} className={`${cardBase} overflow-hidden`}>
       <div className="aspect-[16/10] overflow-hidden bg-[var(--tk-raised)]">
-        <img src={image} alt="" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" />
+        <ArchiveMedia image={image} title={post.title} className="h-full w-full transition duration-700 group-hover:scale-[1.03]" />
       </div>
       <div className="p-6 sm:p-7">
         <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-[var(--tk-accent)]">
@@ -249,7 +274,7 @@ function ListingArchiveCard({ post, href }: { post: SitePost; href: string }) {
   return (
     <Link href={href} className={`${cardBase} flex items-center gap-5 p-5 sm:p-6`}>
       <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1rem] border border-[var(--tk-line)] bg-[var(--tk-raised)]">
-        {logo ? <img src={logo} alt="" className="h-full w-full object-cover" /> : <BriefcaseBusiness className="h-9 w-9 text-[var(--tk-muted)]" />}
+        {logo ? <img src={logo} alt="" className="h-full w-full object-cover" loading="lazy" /> : <BriefcaseBusiness className="h-9 w-9 text-[var(--tk-muted)]" />}
       </div>
       <div className="min-w-0 flex-1">
         <h2 className="editable-display truncate text-xl font-semibold tracking-[-0.02em]">{post.title}</h2>
@@ -292,7 +317,7 @@ function ImageArchiveCard({ post, href, index }: { post: SitePost; href: string;
   return (
     <Link href={href} className="group mb-5 block break-inside-avoid overflow-hidden rounded-[var(--tk-radius)] border border-[var(--tk-line)] bg-[var(--tk-surface)] transition duration-300 hover:-translate-y-1">
       <div className={`relative overflow-hidden ${index % 3 === 0 ? 'aspect-[3/4]' : 'aspect-[4/3]'}`}>
-        <img src={image} alt="" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]" />
+        <ArchiveMedia image={image} title={post.title} className="h-full w-full transition duration-700 group-hover:scale-[1.04]" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_45%,rgba(0,0,0,0.78))] opacity-80 transition group-hover:opacity-100" />
         <div className="absolute inset-x-0 bottom-0 p-5">
           <h2 className="editable-display line-clamp-2 text-lg font-semibold leading-snug tracking-[-0.02em] text-white">{post.title}</h2>

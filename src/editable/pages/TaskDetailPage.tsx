@@ -5,6 +5,7 @@ import { buildPostMetadata, buildTaskMetadata } from '@/lib/seo'
 import { fetchArticleComments, fetchTaskPostBySlug, fetchTaskPosts } from '@/lib/task-data'
 import { getTaskConfig, SITE_CONFIG, type TaskKey } from '@/lib/site-config'
 import type { SitePost } from '@/lib/site-connector'
+import { Ads } from '@/lib/ads'
 import { EditableSiteShell } from '@/editable/shell/EditableSiteShell'
 import { EditableArticleComments } from '@/editable/components/EditableArticleComments'
 import { getTaskTheme, taskThemeStyle } from '@/editable/theme/task-themes'
@@ -113,10 +114,30 @@ const mapSrcFor = (post: SitePost) => {
   return ''
 }
 
+const detailAdSlots: Record<TaskKey, 'header' | 'sidebar' | 'in-feed' | 'article-bottom' | 'footer'> = {
+  article: 'article-bottom',
+  listing: 'footer',
+  classified: 'header',
+  image: 'in-feed',
+  sbm: 'sidebar',
+  pdf: 'article-bottom',
+  profile: 'footer',
+}
+
+function AdBlock({ slot, eager = false }: { slot: 'header' | 'sidebar' | 'in-feed' | 'article-bottom' | 'footer'; eager?: boolean }) {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <Ads slot={slot} showLabel eager={eager} className="mx-auto w-full" />
+    </div>
+  )
+}
+
 export function TaskDetailView({ task, post, related, comments = [] }: { task: TaskKey; post: SitePost; related: SitePost[]; comments?: Array<{ id: string; name: string; comment: string; createdAt: string }> }) {
+  const adSlot = detailAdSlots[task]
   return (
     <EditableSiteShell>
       <main style={taskThemeStyle(task)} className="min-h-screen bg-[var(--tk-bg)] text-[var(--tk-text)]">
+        <AdBlock slot={adSlot} eager />
         {task === 'listing' ? <ListingDetail post={post} related={related} /> : null}
         {task === 'classified' ? <ClassifiedDetail post={post} related={related} /> : null}
         {task === 'image' ? <ImageDetail post={post} related={related} /> : null}
@@ -192,19 +213,36 @@ function BackLink({ task }: { task: TaskKey }) {
 // ----- Article: a quiet, centred reading column -----
 function ArticleDetail({ post, related, comments }: { post: SitePost; related: SitePost[]; comments: Array<{ id: string; name: string; comment: string; createdAt: string }> }) {
   const images = getImages(post)
+  const role = getField(post, ['role', 'designation', 'company', 'location']) || categoryOf(post, 'Update')
+  const website = getField(post, ['website', 'url'])
+  const email = getField(post, ['email'])
   return (
     <>
-      <article className="mx-auto max-w-4xl px-6 py-14 sm:py-20">
-        <BackLink task="article" />
-        <p className="mt-10 text-xs font-medium uppercase tracking-[0.28em] text-[var(--tk-accent)]">{categoryOf(post, 'Article')}</p>
-        <h1 className="editable-display mt-5 text-balance text-4xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-5xl lg:text-[3.4rem]">{post.title}</h1>
-        <div className="mt-6 text-sm text-[var(--tk-muted)]">
-          <span>{SITE_CONFIG.name}</span>
+      <section className="mx-auto max-w-[var(--editable-container)] px-6 py-14 sm:py-20 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-24 lg:self-start">
+            <div className="rounded-[var(--tk-radius)] border border-[var(--tk-line)] bg-[var(--tk-surface)] p-8 text-center shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+              <div className="mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border border-[var(--tk-line)] bg-[var(--tk-raised)]">
+                {images[0] ? <img src={images[0]} alt="" className="h-full w-full object-cover" /> : <UserRound className="h-14 w-14 text-[var(--tk-muted)]" />}
+              </div>
+              <h1 className="editable-display mt-6 text-2xl font-semibold tracking-[-0.02em]">{post.title}</h1>
+              {role ? <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-[var(--tk-accent)]">{role}</p> : null}
+              <DetailMeta post={post} center />
+              <ContactAction website={website} email={email} bare />
+            </div>
+          </aside>
+          <article className="min-w-0">
+            <div className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.3em] text-[var(--tk-accent)]">
+              <span>{SITE_CONFIG.name}</span>
+              <span className="h-1 w-1 rounded-full bg-[var(--tk-accent)] opacity-50" />
+              <span className="text-[var(--tk-muted)]">Overview</span>
+            </div>
+            <BodyContent post={post} />
+            <ImageStrip images={images.slice(1)} label="Gallery" />
+            <EditableArticleComments slug={post.slug} comments={comments} />
+          </article>
         </div>
-        {images[0] ? <img src={images[0]} alt="" className="mt-10 aspect-[16/9] w-full rounded-[var(--tk-radius)] border border-[var(--tk-line)] object-cover" /> : null}
-        <BodyContent post={post} />
-        <EditableArticleComments slug={post.slug} comments={comments} />
-      </article>
+      </section>
       <RelatedStrip task="article" related={related} />
     </>
   )
@@ -293,7 +331,7 @@ function ClassifiedDetail({ post, related }: { post: SitePost; related: SitePost
 // ----- Image: a dark, gallery-led canvas -----
 function ImageDetail({ post, related }: { post: SitePost; related: SitePost[] }) {
   const images = getImages(post)
-  const gallery = images.length ? images : ['/placeholder.svg?height=900&width=1200']
+  const gallery = images
   return (
     <>
       <section className="mx-auto max-w-[var(--editable-container)] px-6 py-14 sm:py-20 lg:px-8">
@@ -305,6 +343,11 @@ function ImageDetail({ post, related }: { post: SitePost; related: SitePost[] })
                 <img src={image} alt="" className="w-full object-cover" />
               </figure>
             ))}
+            {!gallery.length ? (
+              <div className="flex min-h-[360px] items-center justify-center rounded-[var(--tk-radius)] border border-[var(--tk-line)] bg-[linear-gradient(135deg,var(--tk-raised),var(--tk-surface))]">
+                <Camera className="h-12 w-12 text-[var(--tk-accent)]" />
+              </div>
+            ) : null}
           </div>
           <aside className="lg:sticky lg:top-24 lg:self-start">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--tk-line)] px-3.5 py-1.5 text-xs font-medium text-[var(--tk-muted)]"><Camera className="h-3.5 w-3.5 text-[var(--tk-accent)]" /> Image story</div>
@@ -392,8 +435,7 @@ function ProfileDetail({ post, related }: { post: SitePost; related: SitePost[] 
   return (
     <>
       <section className="mx-auto max-w-[var(--editable-container)] px-6 py-14 sm:py-20 lg:px-8">
-        <BackLink task="profile" />
-        <div className="mt-8 grid gap-10 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid gap-10 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="lg:sticky lg:top-24 lg:self-start">
             <div className="rounded-[var(--tk-radius)] border border-[var(--tk-line)] bg-[var(--tk-surface)] p-8 text-center shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
               <div className="mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border border-[var(--tk-line)] bg-[var(--tk-raised)]">
@@ -406,7 +448,11 @@ function ProfileDetail({ post, related }: { post: SitePost; related: SitePost[] 
             </div>
           </aside>
           <article className="min-w-0">
-            <Kicker task="profile">Profile</Kicker>
+            <div className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.3em] text-[var(--tk-accent)]">
+              <span>{SITE_CONFIG.name}</span>
+              <span className="h-1 w-1 rounded-full bg-[var(--tk-accent)] opacity-50" />
+              <span className="text-[var(--tk-muted)]">Overview</span>
+            </div>
             <BodyContent post={post} />
             <ImageStrip images={images.slice(1)} label="Gallery" />
           </article>
@@ -523,11 +569,12 @@ function RelatedPanel({ task, post, related }: { task: TaskKey; post: SitePost; 
 function RelatedStrip({ task, related }: { task: TaskKey; related: SitePost[] }) {
   if (!related.length) return null
   const taskConfig = getTaskConfig(task)
+  const title = task === 'article' || task === 'profile' ? 'More like this' : `More ${(taskConfig?.label || 'posts').toLowerCase()}`
   return (
     <section className="border-t border-[var(--tk-line)]">
       <div className="mx-auto max-w-[var(--editable-container)] px-6 py-14 sm:py-16 lg:px-8">
         <div className="flex items-center justify-between">
-          <h2 className="editable-display text-2xl font-semibold tracking-[-0.02em]">More {(taskConfig?.label || 'posts').toLowerCase()}</h2>
+          <h2 className="editable-display text-2xl font-semibold tracking-[-0.02em]">{title}</h2>
           <Link href={taskConfig?.route || '/'} className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--tk-accent)]">View all <ArrowUpRight className="h-4 w-4" /></Link>
         </div>
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -567,4 +614,3 @@ function RelatedCard({ task, post, grid = false }: { task: TaskKey; post: SitePo
     </Link>
   )
 }
-
